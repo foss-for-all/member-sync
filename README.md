@@ -1,4 +1,4 @@
-# github-org-member-sync
+# member-sync
 
 Sync Keycloak-linked users to a GitHub organization team.
 
@@ -23,7 +23,7 @@ python -m pip install -e .
 Without GitHub sync flags, the command only queries Keycloak and prints matching users as JSON.
 
 ```bash
-github-org-member-sync \
+member-sync \
   --keycloak-base-url https://sso.example.com \
   --realm fossforall \
   --client-id ci-admin \
@@ -54,7 +54,7 @@ The Keycloak client must be allowed to obtain a token and read users, federated 
 List users linked to GitHub:
 
 ```bash
-github-org-member-sync \
+member-sync \
   --keycloak-base-url https://sso.example.com \
   --realm fossforall \
   --auth-realm platform-admin \
@@ -66,7 +66,7 @@ github-org-member-sync \
 List linked users filtered by group and realm role:
 
 ```bash
-github-org-member-sync \
+member-sync \
   --keycloak-base-url https://sso.example.com \
   --realm fossforall \
   --client-id ci-admin \
@@ -115,7 +115,7 @@ The GitHub token must be able to read team members and invitations, and manage o
 Preview missing invitations:
 
 ```bash
-github-org-member-sync \
+member-sync \
   --keycloak-base-url https://sso.example.com \
   --realm fossforall \
   --client-id ci-admin \
@@ -130,7 +130,7 @@ github-org-member-sync \
 Preview removals:
 
 ```bash
-github-org-member-sync \
+member-sync \
   --keycloak-base-url https://sso.example.com \
   --realm fossforall \
   --client-id ci-admin \
@@ -146,7 +146,7 @@ github-org-member-sync \
 Preview a full sync:
 
 ```bash
-github-org-member-sync \
+member-sync \
   --keycloak-base-url https://sso.example.com \
   --realm fossforall \
   --client-id ci-admin \
@@ -166,7 +166,7 @@ github-org-member-sync \
 Live GitHub changes require `--no-dry-run`.
 
 ```bash
-github-org-member-sync \
+member-sync \
   --keycloak-base-url https://sso.example.com \
   --realm fossforall \
   --client-id ci-admin \
