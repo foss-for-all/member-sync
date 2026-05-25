@@ -1,7 +1,20 @@
 [project]
 name = "github-org-member-sync"
 version = "0.1.0"
-description = "Add your description here"
+description = "Sync Keycloak-linked users to a GitHub organization team"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "requests>=2.32",
+    "typer>=0.12",
+]
+
+[project.scripts]
+github-org-member-sync = "main:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["api", "github", "keycloak", "main"]

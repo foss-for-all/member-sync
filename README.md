@@ -1,190 +1,220 @@
 # github-org-member-sync
-Sync FOSS for All members from Keycloak to GitHub Organization
 
-## Tasks
+Sync Keycloak-linked users to a GitHub organization team.
 
-### Userspace Tailscale service
+The CLI lists users from a Keycloak realm by default. GitHub team changes only run when `--invite-missing` or `--remove-extra` is passed, and GitHub mutations are dry-run by default.
 
-Creates a userspace Tailscale sidecar service that other container-based functions can bind to. The service exposes a SOCKS5 proxy at `tailscale:1055`; attached containers receive `ALL_PROXY`, `HTTP_PROXY`, and `HTTPS_PROXY` variables pointing at that proxy.
+## Install
 
-Required inputs:
-- `authKey`
-
-Optional inputs:
-- `hostname`: defaults to `github-org-member-sync`
-
-Create the service:
+With uv:
 
 ```bash
-dagger call userspace-tailscale \
-  --auth-key env:TS_AUTHKEY \
-  --hostname github-org-member-sync
+uv sync
 ```
 
-Future functions that need Tailnet access can be added as methods on the returned object, which makes calls chainable:
+Or with pip:
 
 ```bash
-dagger call userspace-tailscale \
-  --auth-key env:TS_AUTHKEY \
-  --hostname github-org-member-sync \
-  some-tailnet-function \
-    --url https://internal-service.tailnet.example
+python -m pip install -e .
 ```
 
-Container-based functions can also accept a `*UserspaceTailscale` value and attach it before running commands:
+## Default Behavior
 
-```go
-ctr := dag.Container().From("alpine:latest")
-if tailscale != nil {
-	ctr, err = tailscale.WithContainer(ctr)
-	if err != nil {
-		return nil, err
-	}
+Without GitHub sync flags, the command only queries Keycloak and prints matching users as JSON.
+
+```bash
+github-org-member-sync \
+  --keycloak-base-url https://sso.example.com \
+  --realm fossforall \
+  --client-id ci-admin \
+  --client-secret env:KEYCLOAK_CLIENT_SECRET
+```
+
+## Keycloak Options
+
+Required:
+
+- `--keycloak-base-url`: Keycloak server base URL.
+- `--realm`: Realm to query.
+- `--client-id`: Confidential client ID.
+- `--client-secret`: Client secret. Use `env:NAME` to read from an environment variable.
+
+Optional:
+
+- `--auth-realm`: Realm used for token authentication. Defaults to `--realm`.
+- `--linked-provider`: Federated identity provider alias to require, such as `github`.
+- `--group`: Group name or full group path to require, such as `contributors` or `/contributors`.
+- `--realm-role`: Effective realm role name to require.
+- `--page-size`: API page size. Defaults to `100`.
+
+The Keycloak client must be allowed to obtain a token and read users, federated identities, groups, and effective realm roles in the target realm.
+
+## List Keycloak Users
+
+List users linked to GitHub:
+
+```bash
+github-org-member-sync \
+  --keycloak-base-url https://sso.example.com \
+  --realm fossforall \
+  --auth-realm platform-admin \
+  --client-id ci-admin \
+  --client-secret env:KEYCLOAK_CLIENT_SECRET \
+  --linked-provider github
+```
+
+List linked users filtered by group and realm role:
+
+```bash
+github-org-member-sync \
+  --keycloak-base-url https://sso.example.com \
+  --realm fossforall \
+  --client-id ci-admin \
+  --client-secret env:KEYCLOAK_CLIENT_SECRET \
+  --linked-provider github \
+  --group /contributors \
+  --realm-role community-member
+```
+
+Keycloak-only output is a JSON array:
+
+```json
+[
+  {
+    "email": "user@example.com",
+    "enabled": true,
+    "federatedUserID": "12345",
+    "federatedUsername": "github-login",
+    "userId": "keycloak-user-id",
+    "username": "keycloak-user"
+  }
+]
+```
+
+## GitHub Sync Options
+
+Required when `--invite-missing` or `--remove-extra` is used:
+
+- `--github-org`: GitHub organization name.
+- `--github-team-slug`: GitHub team slug, not display name.
+- `--github-token`: GitHub token. Use `env:NAME` to read from an environment variable.
+- `--linked-provider`: Required because GitHub usernames come from Keycloak `federatedUsername` for the matched provider.
+
+Optional:
+
+- `--github-base-url`: GitHub API base URL. Defaults to `https://api.github.com`.
+- `--role`: Team role for invited users. Must be `member` or `maintainer`. Defaults to `member`.
+- `--invite-missing`: Invite/add Keycloak-linked users missing from the GitHub team.
+- `--remove-extra`: Remove GitHub team members missing from the Keycloak query result.
+- `--dry-run / --no-dry-run`: Preview or apply GitHub changes. Defaults to `--dry-run`.
+
+The GitHub token must be able to read team members and invitations, and manage organization/team membership for live changes.
+
+## Dry-Run Sync
+
+Preview missing invitations:
+
+```bash
+github-org-member-sync \
+  --keycloak-base-url https://sso.example.com \
+  --realm fossforall \
+  --client-id ci-admin \
+  --client-secret env:KEYCLOAK_CLIENT_SECRET \
+  --linked-provider github \
+  --github-org fossforall \
+  --github-team-slug contributors \
+  --github-token env:GITHUB_TOKEN \
+  --invite-missing
+```
+
+Preview removals:
+
+```bash
+github-org-member-sync \
+  --keycloak-base-url https://sso.example.com \
+  --realm fossforall \
+  --client-id ci-admin \
+  --client-secret env:KEYCLOAK_CLIENT_SECRET \
+  --linked-provider github \
+  --group /contributors \
+  --github-org fossforall \
+  --github-team-slug contributors \
+  --github-token env:GITHUB_TOKEN \
+  --remove-extra
+```
+
+Preview a full sync:
+
+```bash
+github-org-member-sync \
+  --keycloak-base-url https://sso.example.com \
+  --realm fossforall \
+  --client-id ci-admin \
+  --client-secret env:KEYCLOAK_CLIENT_SECRET \
+  --linked-provider github \
+  --group /contributors \
+  --realm-role community-member \
+  --github-org fossforall \
+  --github-team-slug contributors \
+  --github-token env:GITHUB_TOKEN \
+  --invite-missing \
+  --remove-extra
+```
+
+## Live Sync
+
+Live GitHub changes require `--no-dry-run`.
+
+```bash
+github-org-member-sync \
+  --keycloak-base-url https://sso.example.com \
+  --realm fossforall \
+  --client-id ci-admin \
+  --client-secret env:KEYCLOAK_CLIENT_SECRET \
+  --linked-provider github \
+  --group /contributors \
+  --realm-role community-member \
+  --github-org fossforall \
+  --github-team-slug contributors \
+  --github-token env:GITHUB_TOKEN \
+  --invite-missing \
+  --remove-extra \
+  --no-dry-run
+```
+
+## Sync Output
+
+Sync mode prints a JSON object:
+
+```json
+{
+  "dryRun": true,
+  "githubTeamInvitations": ["pending-login"],
+  "githubTeamMembers": ["existing-login"],
+  "inviteResults": [
+    {
+      "githubUsername": "new-login",
+      "status": "dry-run"
+    }
+  ],
+  "keycloakUsers": [],
+  "removeResults": [],
+  "toInvite": ["new-login"],
+  "toRemove": []
 }
 ```
 
-### List Keycloak users
+## API Behavior
 
-Lists users in a target realm. Optional filters can limit results to users with a linked social login provider, group association, or assigned realm role.
+Keycloak:
 
-Required inputs:
-- `keycloakBaseURL`
-- `realm`
-- `clientId`
-- `clientSecret`
+- Authenticates with client credentials at `/realms/{auth_realm}/protocol/openid-connect/token`.
+- Lists users from `/admin/realms/{realm}/users`.
+- Applies linked provider, group, and realm role filters client-side.
 
-Optional inputs:
-- `authRealm`: defaults to `realm` when omitted
-- `linkedProvider`: filters users by identity provider alias, such as `github`
-- `group`: filters users by group name or full group path, such as `contributors` or `/contributors`
-- `realmRole`: filters users by effective realm role name
-- `pageSize`: defaults to `100` when omitted or set to `0`
+GitHub:
 
-Linked provider example:
-
-```bash
-dagger call list-keycloak-users \
-  --keycloak-base-url https://sso.example.com \
-  --realm fossforall \
-  --auth-realm platform-admin \
-  --linked-provider github \
-  --client-id ci-admin \
-  --client-secret env:KEYCLOAK_CLIENT_SECRET \
-  users
-```
-
-Group example:
-
-```bash
-dagger call list-keycloak-users \
-  --keycloak-base-url https://sso.example.com \
-  --realm fossforall \
-  --group /contributors \
-  --client-id ci-admin \
-  --client-secret env:KEYCLOAK_CLIENT_SECRET \
-  users
-```
-
-Realm role example:
-
-```bash
-dagger call list-keycloak-users \
-  --keycloak-base-url https://sso.example.com \
-  --realm fossforall \
-  --realm-role community-member \
-  --client-id ci-admin \
-  --client-secret env:KEYCLOAK_CLIENT_SECRET \
-  users
-```
-
-Each user result includes the Keycloak user ID, username, email, enabled status, federated user ID, and federated username.
-
-Federated fields are populated when `linkedProvider` is used and the user matches that provider.
-
-The confidential client used for authentication must be allowed to obtain a token from `authRealm` and must have permission to read users in the target `realm`.
-
-The result is chainable in Dagger shell through the returned `KeycloakLinkedUsers` object.
-
-### Invite linked users to a GitHub team
-
-Invites Keycloak-linked users to a GitHub organization team using their federated username as the GitHub login. Existing active team members and users with pending team invitations are skipped.
-
-Required inputs:
-- `usersJson`
-- `githubOrg`
-- `githubTeamSlug`
-- `githubToken`
-
-Optional inputs:
-- `role`: defaults to `member`; must be `member` or `maintainer`
-- `githubBaseURL`: defaults to `https://api.github.com`
-- `pageSize`: defaults to `100` and is capped at `100`
-- `dryRun`: defaults to `false`
-
-Dry-run example:
-
-```bash
-dagger call invite-keycloak-users-to-github-org-team \
-  --users-json '[{"userId":"keycloak-user-id","username":"keycloak-user","email":"user@example.com","enabled":true,"federatedUserID":"12345","federatedUsername":"github-login"}]' \
-  --github-org fossforall \
-  --github-team-slug contributors \
-  --github-token env:GITHUB_TOKEN \
-  --dry-run true
-```
-
-Live invitation example:
-
-```bash
-dagger call invite-keycloak-users-to-github-org-team \
-  --users-json '[{"userId":"keycloak-user-id","username":"keycloak-user","email":"user@example.com","enabled":true,"federatedUserID":"12345","federatedUsername":"github-login"}]' \
-  --github-org fossforall \
-  --github-team-slug contributors \
-  --github-token env:GITHUB_TOKEN \
-  --role member
-```
-
-Each result includes the Keycloak user ID, Keycloak username, GitHub username, status, membership state, role, and message.
-
-`githubTeamSlug` is the team slug, not the display name. The GitHub token must be able to read the team membership and manage organization/team membership.
-
-### Chain in Dagger shell
-
-Use the listing result directly as the invite input in Dagger shell:
-
-```bash
-dagger shell
-```
-
-```shell
-list-keycloak-users \
-  --keycloak-base-url https://sso.example.com \
-  --realm fossforall \
-  --auth-realm platform-admin \
-  --linked-provider github \
-  --client-id ci-admin \
-  --client-secret env:KEYCLOAK_CLIENT_SECRET \
-  | invite-to-github-org-team \
-    --github-org fossforall \
-    --github-team-slug contributors \
-    --github-token env:GITHUB_TOKEN \
-    --dry-run true
-```
-
-You can omit `--auth-realm` when the confidential client lives in the same realm being queried.
-
-The same chain can be run without entering Dagger shell:
-
-```bash
-dagger call list-keycloak-users \
-  --keycloak-base-url https://sso.example.com \
-  --realm fossforall \
-  --auth-realm platform-admin \
-  --linked-provider github \
-  --client-id ci-admin \
-  --client-secret env:KEYCLOAK_CLIENT_SECRET \
-  invite-to-github-org-team \
-    --github-org fossforall \
-    --github-team-slug contributors \
-    --github-token env:GITHUB_TOKEN \
-    --dry-run true
-```
+- Lists active team members from `/orgs/{org}/teams/{team_slug}/members`.
+- Lists pending team invitations from `/orgs/{org}/teams/{team_slug}/invitations`.
+- Adds missing users with `PUT /orgs/{org}/teams/{team_slug}/memberships/{username}`.
+- Removes extra users with `DELETE /orgs/{org}/teams/{team_slug}/memberships/{username}`.
