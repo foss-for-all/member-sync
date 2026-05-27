@@ -16,12 +16,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Tailscale
-        uses: tailscale/github-action@v4
-        with:
-          authkey: ${{ secrets.TS_AUTHKEY }}
-          tags: tag:ci
-          args: --accept-dns=true
+      # - name: Set up Tailscale
+      #   uses: tailscale/github-action@v4
+      #   with:
+      #     authkey: ${{ secrets.TS_AUTHKEY }}
+      #     tags: tag:ci
+      #     args: --accept-dns=true
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
